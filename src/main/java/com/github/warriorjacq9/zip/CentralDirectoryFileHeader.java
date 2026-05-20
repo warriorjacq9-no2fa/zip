@@ -3,6 +3,7 @@ package com.github.warriorjacq9.zip;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
@@ -100,5 +101,30 @@ public record CentralDirectoryFileHeader(
                 extra,
                 comment
         );
+    }
+
+    public void writeStream(OutputStream out) throws IOException {
+        ByteBuffer buf = ByteBuffer.allocate(STATIC_LEN + commentLength).order(ByteOrder.LITTLE_ENDIAN);
+        buf.putInt(signature);
+        buf.putShort(version);
+        buf.putShort(minVersion);
+        buf.putShort(flags);
+        buf.putShort(compression);
+        buf.putShort(modifiedTime);
+        buf.putShort(modifiedDate);
+        buf.putInt(crc32);
+        buf.putInt(compressedSize);
+        buf.putInt(uncompressedSize);
+        buf.putShort(nameLength);
+        buf.putShort(extraLength);
+        buf.putShort(commentLength);
+        buf.putShort(diskNumber);
+        buf.putShort(internalAttrs);
+        buf.putInt(externalAttrs);
+        buf.putInt(offset);
+        buf.put(name.getBytes(StandardCharsets.UTF_8));
+        buf.put(extra);
+        buf.put(comment.getBytes(StandardCharsets.UTF_8));
+        out.write(buf.array());
     }
 }

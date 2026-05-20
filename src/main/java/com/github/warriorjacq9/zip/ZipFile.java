@@ -5,31 +5,32 @@ import java.io.*;
 public class ZipFile {
     private EOCDRecord eocdRecord;
 
-    public ZipFile(String filename) throws IOException {
-        try(InputStream in = new FileInputStream(filename)) {
-            eocdRecord = EOCDRecord.fromStream(in);
-        } catch (Exception e) {
-            if(e instanceof FileNotFoundException ex) {
-                System.out.printf("File not found: %s", filename);
-            } else {
-                throw new RuntimeException(e);
-            }
-        }
+    private ZipFile() {}
+
+    public static ZipFile read(InputStream in) throws IOException {
+        ZipFile zip = new ZipFile();
+        zip.eocdRecord = EOCDRecord.fromStream(in);
+        return zip;
     }
 
-    public static ZipFile create(String filename) throws IOException {
-        try(OutputStream out = new FileOutputStream(filename)) {
-            EOCDRecord record = new EOCDRecord(
-                    EOCDRecord.MAGIC,
-                    -1,
-                    -1,
-                    -1,
-                    -1,
-                    -1,
+    public void write(OutputStream out) throws IOException {
+        eocdRecord.writeStream(out);
+    }
 
-            );
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+    public static ZipFile create() {
+        ZipFile zip = new ZipFile();
+
+        zip.eocdRecord = new EOCDRecord(
+                EOCDRecord.MAGIC,
+                (short) 0,
+                (short) 0,
+                (short) 0,
+                (short) 0,
+                0,
+                0,
+                (short) 0,
+                ""
+        );
+        return zip;
     }
 }
