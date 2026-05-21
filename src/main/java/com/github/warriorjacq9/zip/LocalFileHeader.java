@@ -25,6 +25,24 @@ public record LocalFileHeader(
     private static final int STATIC_LEN = 30;
     public static final int MAGIC = 0x04034b50;
 
+    public static LocalFileHeader fromCDFH(CentralDirectoryFileHeader cdfh) {
+        return new LocalFileHeader(
+                cdfh.signature(),
+                cdfh.version(),
+                cdfh.flags(),
+                cdfh.compression(),
+                cdfh.modifiedTime(),
+                cdfh.modifiedDate(),
+                cdfh.crc32(),
+                cdfh.compressedSize(),
+                cdfh.uncompressedSize(),
+                cdfh.nameLength(),
+                cdfh.extraLength(),
+                cdfh.name(),
+                cdfh.extra()
+        );
+    }
+
     public static LocalFileHeader fromStream(InputStream in) throws IOException {
         byte[] headerBytes = in.readNBytes(STATIC_LEN);
 

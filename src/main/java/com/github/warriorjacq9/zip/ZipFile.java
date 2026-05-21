@@ -1,11 +1,35 @@
 package com.github.warriorjacq9.zip;
 
 import java.io.*;
+import java.util.HashMap;
+import java.util.zip.CRC32;
+import java.time.LocalDateTime;
+import java.util.Map;
 
 public class ZipFile {
-    private EOCDRecord eocdRecord;
+    public static long toDosTime(LocalDateTime dateTime) {
+        int year = dateTime.getYear() - 1980;
+        int month = dateTime.getMonthValue();
+        int day = dateTime.getDayOfMonth();
+        int hour = dateTime.getHour();
+        int minute = dateTime.getMinute();
+        int second = dateTime.getSecond() / 2; // DOS stores seconds in 2-second increments
 
-    private ZipFile() {}
+        int dosDate = (year << 9) | (month << 5) | day;
+        int dosTime = (hour << 11) | (minute << 5) | second;
+
+        // Combined 32-bit value (Date in high bits, Time in low)
+        return ((long) dosDate << 16) | (dosTime & 0xFFFFL);
+    }
+
+    record LocalFile(LocalFileHeader lfh, byte[] data) {}
+
+    private EOCDRecord eocdRecord;
+    private Map<CentralDirectoryFileHeader, LocalFile> files;
+
+    private ZipFile() {
+        files = new HashMap<>();
+    }
 
     public static ZipFile read(InputStream in) throws IOException {
         ZipFile zip = new ZipFile();
@@ -14,6 +38,9 @@ public class ZipFile {
     }
 
     public void write(OutputStream out) throws IOException {
+        for(LocalFile file: files.values()) {
+            file.lfh.
+        }
         eocdRecord.writeStream(out);
     }
 
@@ -32,5 +59,33 @@ public class ZipFile {
                 ""
         );
         return zip;
+    }
+
+    public void addFile(String name, byte[] data) {
+        CRC32 checksum = new CRC32();
+        checksum.update(data);
+        CentralDirectoryFileHeader header = new CentralDirectoryFileHeader(
+                CentralDirectoryFileHeader.MAGIC,
+                (short) 0x0341,
+                (short) 0x0314,
+                (short) 0b0000100000000000,
+                (short) 0,
+                (short) (toDosTime(LocalDateTime.now()) & 0xFFFFL),
+                (short) (toDosTime(LocalDateTime.now()) >> 16),
+                (int) checksum.getValue(),
+                data.length,
+                data.length,
+                (short) name.length(),
+                (short) 0,
+                (short) 0,
+                (short) 0,
+                (short) 0,
+                0,
+                0,
+                name,
+                null,
+                ""
+        );
+        files.put(header,new LocalFile(LocalFileHeader.fromCDFH(header), data));
     }
 }
