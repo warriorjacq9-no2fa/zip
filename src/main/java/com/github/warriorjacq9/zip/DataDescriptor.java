@@ -11,7 +11,7 @@ public record DataDescriptor(
         int compressedSize,
         int uncompressedSize
 ) {
-    private static final int STATIC_LEN = 12;
+    public static final int STATIC_LEN = 12;
     public static final int MAGIC = 0x08074b50;
 
     public static DataDescriptor fromStream(InputStream in) throws IOException {

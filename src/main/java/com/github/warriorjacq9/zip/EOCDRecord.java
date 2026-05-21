@@ -19,7 +19,7 @@ public record EOCDRecord(
         short commentLength,
         String comment
 ) {
-    private static final int STATIC_LEN = 22;
+    public static final int STATIC_LEN = 22;
     public static final int MAGIC = 0x06054b50;
 
     public static EOCDRecord fromStream(InputStream in) throws IOException {

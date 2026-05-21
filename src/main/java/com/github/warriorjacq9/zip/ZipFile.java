@@ -38,27 +38,39 @@ public class ZipFile {
     }
 
     public void write(OutputStream out) throws IOException {
+        int cdOffset = 0;
         for(LocalFile file: files.values()) {
-            file.lfh.
+            cdOffset += LocalFileHeader.STATIC_LEN;
+            cdOffset += file.lfh.nameLength();
+            cdOffset += file.lfh.extraLength();
+            cdOffset += file.data.length;
+            file.lfh.writeStream(out);
+            out.write(file.data);
         }
+        int cdSize = 0;
+        for(CentralDirectoryFileHeader header: files.keySet()) {
+            cdSize += CentralDirectoryFileHeader.STATIC_LEN;
+            cdSize += header.nameLength();
+            cdSize += header.extraLength();
+            cdSize += header.commentLength();
+            header.writeStream(out);
+        }
+        eocdRecord = new EOCDRecord(
+                EOCDRecord.MAGIC,
+                (short) 0,
+                (short) 0,
+                (short) files.size(),
+                (short) files.size(),
+                cdSize,
+                cdOffset,
+                (short) 0,
+                ""
+        );
         eocdRecord.writeStream(out);
     }
 
     public static ZipFile create() {
-        ZipFile zip = new ZipFile();
-
-        zip.eocdRecord = new EOCDRecord(
-                EOCDRecord.MAGIC,
-                (short) 0,
-                (short) 0,
-                (short) 0,
-                (short) 0,
-                0,
-                0,
-                (short) 0,
-                ""
-        );
-        return zip;
+        return new ZipFile();
     }
 
     public void addFile(String name, byte[] data) {
@@ -66,9 +78,9 @@ public class ZipFile {
         checksum.update(data);
         CentralDirectoryFileHeader header = new CentralDirectoryFileHeader(
                 CentralDirectoryFileHeader.MAGIC,
-                (short) 0x0341,
-                (short) 0x0314,
-                (short) 0b0000100000000000,
+                (short) 0x0014,
+                (short) 0x0014,
+                (short) 0,
                 (short) 0,
                 (short) (toDosTime(LocalDateTime.now()) & 0xFFFFL),
                 (short) (toDosTime(LocalDateTime.now()) >> 16),
@@ -83,7 +95,7 @@ public class ZipFile {
                 0,
                 0,
                 name,
-                null,
+                new byte[0],
                 ""
         );
         files.put(header,new LocalFile(LocalFileHeader.fromCDFH(header), data));

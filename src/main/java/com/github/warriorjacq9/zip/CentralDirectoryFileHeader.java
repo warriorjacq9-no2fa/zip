@@ -30,7 +30,7 @@ public record CentralDirectoryFileHeader(
         byte[] extra,
         String comment
 ) {
-    private static final int STATIC_LEN = 46;
+    public static final int STATIC_LEN = 46;
     public static final int MAGIC = 0x02014b50;
 
     public static CentralDirectoryFileHeader fromStream(InputStream in) throws IOException {
@@ -104,7 +104,7 @@ public record CentralDirectoryFileHeader(
     }
 
     public void writeStream(OutputStream out) throws IOException {
-        ByteBuffer buf = ByteBuffer.allocate(STATIC_LEN + commentLength).order(ByteOrder.LITTLE_ENDIAN);
+        ByteBuffer buf = ByteBuffer.allocate(STATIC_LEN + nameLength + extraLength + commentLength).order(ByteOrder.LITTLE_ENDIAN);
         buf.putInt(signature);
         buf.putShort(version);
         buf.putShort(minVersion);

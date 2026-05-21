@@ -3,6 +3,7 @@ package com.github.warriorjacq9.zip;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
@@ -22,13 +23,13 @@ public record LocalFileHeader(
         String name,
         byte[] extra
 ) {
-    private static final int STATIC_LEN = 30;
+    public static final int STATIC_LEN = 30;
     public static final int MAGIC = 0x04034b50;
 
     public static LocalFileHeader fromCDFH(CentralDirectoryFileHeader cdfh) {
         return new LocalFileHeader(
-                cdfh.signature(),
-                cdfh.version(),
+                MAGIC,
+                cdfh.minVersion(),
                 cdfh.flags(),
                 cdfh.compression(),
                 cdfh.modifiedTime(),
@@ -93,5 +94,23 @@ public record LocalFileHeader(
                 name,
                 extra
         );
+    }
+
+    public void writeStream(OutputStream out) throws IOException {
+        ByteBuffer buf = ByteBuffer.allocate(STATIC_LEN + nameLength + extraLength).order(ByteOrder.LITTLE_ENDIAN);
+        buf.putInt(signature);
+        buf.putShort(version);
+        buf.putShort(flags);
+        buf.putShort(compression);
+        buf.putShort(modifiedTime);
+        buf.putShort(modifiedDate);
+        buf.putInt(crc32);
+        buf.putInt(compressedSize);
+        buf.putInt(uncompressedSize);
+        buf.putShort(nameLength);
+        buf.putShort(extraLength);
+        buf.put(name.getBytes(StandardCharsets.UTF_8));
+        buf.put(extra);
+        out.write(buf.array());
     }
 }
