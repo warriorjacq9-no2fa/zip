@@ -28,7 +28,9 @@ public final class ZipFile {
 
         byte[] data = Arrays.copyOf(currentArchive, overlapSize);
 
-        entries.add(Entry.normal(name, data));
+        Entry e = Entry.normal(name, data);
+
+        entries.add(e);
     }
 
     public void write(OutputStream out) throws IOException {
@@ -51,7 +53,7 @@ public final class ZipFile {
             centralHeaders.add(cdfh);
 
             offset += LocalFileHeader.STATIC_LEN + lfh.nameLength() + lfh.extraLength();
-            offset += entry.data.length;
+            offset += entry.length;
         }
 
         int centralDirectoryOffset = offset;
@@ -92,7 +94,7 @@ public final class ZipFile {
 
         for (Entry entry : entries) {
             size += entry.localHeaderSize();
-            size += entry.data.length;
+            size += entry.length;
         }
 
         return size;
@@ -116,8 +118,8 @@ public final class ZipFile {
     private static final class Entry {
 
         private final String name;
-        private final byte[] data;
-
+        private byte[] data;
+        private int length;
         private final int crc32;
         private final short dosTime;
         private final short dosDate;
@@ -131,6 +133,7 @@ public final class ZipFile {
         ) {
             this.name = name;
             this.data = data;
+            this.length = data.length;
             this.crc32 = crc32;
             this.dosTime = dosTime;
             this.dosDate = dosDate;
@@ -162,8 +165,8 @@ public final class ZipFile {
                     dosTime,
                     dosDate,
                     crc32,
-                    data.length,
-                    data.length,
+                    length,
+                    length,
                     (short) name.length(),
                     (short) 0,
                     name,
@@ -184,8 +187,8 @@ public final class ZipFile {
                     dosTime,
                     dosDate,
                     crc32,
-                    data.length,
-                    data.length,
+                    length,
+                    length,
                     (short) name.length(),
                     (short) 0,
                     (short) 0,
