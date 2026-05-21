@@ -12,7 +12,8 @@ public class Main {
                 FileInputStream in = new FileInputStream("test.txt");
                 FileOutputStream out = new FileOutputStream("test.zip")) {
             byte[] data = in.readAllBytes();
-            for(int i = 0; i < 128; i++)  file.addFile("test%d.txt".formatted(i), data);
+            file.addFile("test.txt", data);
+            for(int i = 0; i < 32; i++)  file.addOverlappingFile("test%d.txt".formatted(i));
             file.write(out);
         } catch (IOException e) {
             System.out.println(Arrays.toString(e.getStackTrace()));

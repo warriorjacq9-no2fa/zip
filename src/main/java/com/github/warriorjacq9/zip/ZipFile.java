@@ -1,103 +1,206 @@
 package com.github.warriorjacq9.zip;
 
 import java.io.*;
-import java.util.HashMap;
-import java.util.zip.CRC32;
 import java.time.LocalDateTime;
-import java.util.Map;
+import java.util.*;
+import java.util.zip.CRC32;
 
-public class ZipFile {
-    public static long toDosTime(LocalDateTime dateTime) {
-        int year = dateTime.getYear() - 1980;
-        int month = dateTime.getMonthValue();
-        int day = dateTime.getDayOfMonth();
-        int hour = dateTime.getHour();
-        int minute = dateTime.getMinute();
-        int second = dateTime.getSecond() / 2; // DOS stores seconds in 2-second increments
+public final class ZipFile {
 
-        int dosDate = (year << 9) | (month << 5) | day;
-        int dosTime = (hour << 11) | (minute << 5) | second;
+    private static final int MAX_SIZE = 1048576;
 
-        // Combined 32-bit value (Date in high bits, Time in low)
-        return ((long) dosDate << 16) | (dosTime & 0xFFFFL);
-    }
-
-    record LocalFile(LocalFileHeader lfh, byte[] data) {}
-
-    private EOCDRecord eocdRecord;
-    private Map<CentralDirectoryFileHeader, LocalFile> files;
-
-    private ZipFile() {
-        files = new HashMap<>();
-    }
-
-    public static ZipFile read(InputStream in) throws IOException {
-        ZipFile zip = new ZipFile();
-        zip.eocdRecord = EOCDRecord.fromStream(in);
-        return zip;
-    }
-
-    public void write(OutputStream out) throws IOException {
-        int cdOffset = 0;
-        for(LocalFile file: files.values()) {
-            cdOffset += LocalFileHeader.STATIC_LEN;
-            cdOffset += file.lfh.nameLength();
-            cdOffset += file.lfh.extraLength();
-            cdOffset += file.data.length;
-            file.lfh.writeStream(out);
-            out.write(file.data);
-        }
-        int cdSize = 0;
-        for(CentralDirectoryFileHeader header: files.keySet()) {
-            cdSize += CentralDirectoryFileHeader.STATIC_LEN;
-            cdSize += header.nameLength();
-            cdSize += header.extraLength();
-            cdSize += header.commentLength();
-            header.writeStream(out);
-        }
-        eocdRecord = new EOCDRecord(
-                EOCDRecord.MAGIC,
-                (short) 0,
-                (short) 0,
-                (short) files.size(),
-                (short) files.size(),
-                cdSize,
-                cdOffset,
-                (short) 0,
-                ""
-        );
-        eocdRecord.writeStream(out);
-    }
+    private final List<Entry> entries = new ArrayList<>();
 
     public static ZipFile create() {
         return new ZipFile();
     }
 
     public void addFile(String name, byte[] data) {
-        CRC32 checksum = new CRC32();
-        checksum.update(data);
-        CentralDirectoryFileHeader header = new CentralDirectoryFileHeader(
-                CentralDirectoryFileHeader.MAGIC,
-                (short) 0x0014,
-                (short) 0x0014,
+        entries.add(Entry.normal(name, data));
+    }
+
+    public void addOverlappingFile(String name) throws IOException {
+        byte[] currentArchive = toByteArray();
+
+        // overlap local file region only
+        int overlapSize = calculateLocalRegionSize();
+        if(overlapSize > MAX_SIZE) overlapSize = MAX_SIZE;
+
+        byte[] data = Arrays.copyOf(currentArchive, overlapSize);
+
+        entries.add(Entry.normal(name, data));
+    }
+
+    public void write(OutputStream out) throws IOException {
+
+        List<CentralDirectoryFileHeader> centralHeaders = new ArrayList<>();
+
+        int offset = 0;
+
+        // write local entries
+        for (Entry entry : entries) {
+
+            LocalFileHeader lfh = entry.createLocalHeader();
+
+            lfh.writeStream(out);
+            out.write(entry.data);
+
+            CentralDirectoryFileHeader cdfh =
+                    entry.createCentralDirectoryHeader(offset);
+
+            centralHeaders.add(cdfh);
+
+            offset += LocalFileHeader.STATIC_LEN + lfh.nameLength() + lfh.extraLength();
+            offset += entry.data.length;
+        }
+
+        int centralDirectoryOffset = offset;
+
+        // write central directory
+        for (CentralDirectoryFileHeader cdfh : centralHeaders) {
+            cdfh.writeStream(out);
+            offset += CentralDirectoryFileHeader.STATIC_LEN + cdfh.nameLength() + cdfh.extraLength() + cdfh.commentLength();
+        }
+
+        int centralDirectorySize =
+                offset - centralDirectoryOffset;
+
+        EOCDRecord eocd = new EOCDRecord(
+                EOCDRecord.MAGIC,
                 (short) 0,
                 (short) 0,
-                (short) (toDosTime(LocalDateTime.now()) & 0xFFFFL),
-                (short) (toDosTime(LocalDateTime.now()) >> 16),
-                (int) checksum.getValue(),
-                data.length,
-                data.length,
-                (short) name.length(),
+                (short) entries.size(),
+                (short) entries.size(),
+                centralDirectorySize,
+                centralDirectoryOffset,
                 (short) 0,
-                (short) 0,
-                (short) 0,
-                (short) 0,
-                0,
-                0,
-                name,
-                new byte[0],
                 ""
         );
-        files.put(header,new LocalFile(LocalFileHeader.fromCDFH(header), data));
+
+        eocd.writeStream(out);
+    }
+
+    public byte[] toByteArray() throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        write(out);
+        return out.toByteArray();
+    }
+
+    private int calculateLocalRegionSize() {
+
+        int size = 0;
+
+        for (Entry entry : entries) {
+            size += entry.localHeaderSize();
+            size += entry.data.length;
+        }
+
+        return size;
+    }
+
+    public static long toDosTime(LocalDateTime time) {
+
+        int dosTime =
+                (time.getHour() << 11)
+                        | (time.getMinute() << 5)
+                        | (time.getSecond() / 2);
+
+        int dosDate =
+                ((time.getYear() - 1980) << 9)
+                        | (time.getMonthValue() << 5)
+                        | time.getDayOfMonth();
+
+        return ((long) dosDate << 16) | (dosTime & 0xFFFFL);
+    }
+
+    private static final class Entry {
+
+        private final String name;
+        private final byte[] data;
+
+        private final int crc32;
+        private final short dosTime;
+        private final short dosDate;
+
+        private Entry(
+                String name,
+                byte[] data,
+                int crc32,
+                short dosTime,
+                short dosDate
+        ) {
+            this.name = name;
+            this.data = data;
+            this.crc32 = crc32;
+            this.dosTime = dosTime;
+            this.dosDate = dosDate;
+        }
+
+        static Entry normal(String name, byte[] data) {
+
+            CRC32 crc = new CRC32();
+            crc.update(data);
+
+            long dos = ZipFile.toDosTime(LocalDateTime.now());
+
+            return new Entry(
+                    name,
+                    data,
+                    (int) crc.getValue(),
+                    (short) (dos & 0xFFFF),
+                    (short) (dos >>> 16)
+            );
+        }
+
+        LocalFileHeader createLocalHeader() {
+
+            return new LocalFileHeader(
+                    LocalFileHeader.MAGIC,
+                    (short) 20,
+                    (short) 0,
+                    (short) 0,
+                    dosTime,
+                    dosDate,
+                    crc32,
+                    data.length,
+                    data.length,
+                    (short) name.length(),
+                    (short) 0,
+                    name,
+                    new byte[0]
+            );
+        }
+
+        CentralDirectoryFileHeader createCentralDirectoryHeader(
+                int offset
+        ) {
+
+            return new CentralDirectoryFileHeader(
+                    CentralDirectoryFileHeader.MAGIC,
+                    (short) 20,
+                    (short) 20,
+                    (short) 0,
+                    (short) 0,
+                    dosTime,
+                    dosDate,
+                    crc32,
+                    data.length,
+                    data.length,
+                    (short) name.length(),
+                    (short) 0,
+                    (short) 0,
+                    (short) 0,
+                    (short) 0,
+                    0,
+                    offset,
+                    name,
+                    new byte[0],
+                    ""
+            );
+        }
+
+        int localHeaderSize() {
+            return LocalFileHeader.STATIC_LEN + name.length();
+        }
     }
 }
