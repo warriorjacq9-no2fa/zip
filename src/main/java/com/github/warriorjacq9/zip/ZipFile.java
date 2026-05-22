@@ -20,15 +20,11 @@ public final class ZipFile {
     }
 
     public void addOverlappingFile(String name) throws IOException {
-        byte[] currentArchive = toByteArray();
-
         // overlap local file region only
         int overlapSize = calculateLocalRegionSize();
         if(overlapSize > MAX_SIZE) overlapSize = MAX_SIZE;
 
-        byte[] data = Arrays.copyOf(currentArchive, overlapSize);
-
-        Entry e = Entry.normal(name, data);
+        Entry e = Entry.overlap(name, overlapSize);
 
         entries.add(e);
     }
@@ -53,7 +49,7 @@ public final class ZipFile {
             centralHeaders.add(cdfh);
 
             offset += LocalFileHeader.STATIC_LEN + lfh.nameLength() + lfh.extraLength();
-            offset += entry.length;
+            if(!entry.isOverlap) offset += entry.length();
         }
 
         int centralDirectoryOffset = offset;
@@ -94,7 +90,7 @@ public final class ZipFile {
 
         for (Entry entry : entries) {
             size += entry.localHeaderSize();
-            size += entry.length;
+            if(!entry.isOverlap) size += entry.length();
         }
 
         return size;
@@ -118,25 +114,29 @@ public final class ZipFile {
     private static final class Entry {
 
         private final String name;
-        private byte[] data;
-        private int length;
+        private final byte[] data;
+        private final int length;
         private final int crc32;
         private final short dosTime;
         private final short dosDate;
+        private final boolean isOverlap;
 
         private Entry(
                 String name,
                 byte[] data,
+                int length,
                 int crc32,
                 short dosTime,
-                short dosDate
+                short dosDate,
+                boolean isOverlap
         ) {
             this.name = name;
             this.data = data;
-            this.length = data.length;
+            this.length = length;
             this.crc32 = crc32;
             this.dosTime = dosTime;
             this.dosDate = dosDate;
+            this.isOverlap = isOverlap;
         }
 
         static Entry normal(String name, byte[] data) {
@@ -149,22 +149,37 @@ public final class ZipFile {
             return new Entry(
                     name,
                     data,
+                    data.length,
                     (int) crc.getValue(),
                     (short) (dos & 0xFFFF),
-                    (short) (dos >>> 16)
-            );
+                    ((short) (dos >>> 16)),
+                    false);
+        }
+
+        static Entry overlap(String name, int length) {
+            long dos = ZipFile.toDosTime(LocalDateTime.now());
+            return new Entry(
+                    name,
+                    new byte[0],
+                    length,
+                    0,
+                    (short) (dos & 0xFFFF),
+                    (short) (dos >>> 16),
+                    true);
         }
 
         LocalFileHeader createLocalHeader() {
+            short effectiveFlags = isOverlap ? (short)0x08 : (short)0;
+            int effectiveCrc = isOverlap ? 0 : crc32;
 
             return new LocalFileHeader(
                     LocalFileHeader.MAGIC,
                     (short) 20,
                     (short) 0,
-                    (short) 0,
+                    effectiveFlags,
                     dosTime,
                     dosDate,
-                    crc32,
+                    effectiveCrc,
                     length,
                     length,
                     (short) name.length(),
@@ -177,16 +192,18 @@ public final class ZipFile {
         CentralDirectoryFileHeader createCentralDirectoryHeader(
                 int offset
         ) {
+            short effectiveFlags = isOverlap ? (short)0x08 : (short)0;
+            int effectiveCrc = isOverlap ? 0 : crc32;
 
             return new CentralDirectoryFileHeader(
                     CentralDirectoryFileHeader.MAGIC,
                     (short) 20,
                     (short) 20,
-                    (short) 0,
+                    (short) effectiveFlags,
                     (short) 0,
                     dosTime,
                     dosDate,
-                    crc32,
+                    effectiveCrc,
                     length,
                     length,
                     (short) name.length(),
@@ -204,6 +221,10 @@ public final class ZipFile {
 
         int localHeaderSize() {
             return LocalFileHeader.STATIC_LEN + name.length();
+        }
+
+        public int length() {
+            return length;
         }
     }
 }
