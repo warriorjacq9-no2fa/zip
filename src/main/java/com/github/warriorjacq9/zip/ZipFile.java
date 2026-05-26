@@ -19,6 +19,10 @@ public final class ZipFile {
         entries.add(Entry.normal(name, data));
     }
 
+    public void addFileCompressed(String name, byte[] data) {
+
+    }
+
     public void addOverlappingFile(String name) throws IOException {
         // overlap local file region only
         int overlapSize = calculateLocalRegionSize();
@@ -120,6 +124,7 @@ public final class ZipFile {
         private final short dosTime;
         private final short dosDate;
         private final boolean isOverlap;
+        private final boolean isCompressed;
 
         private Entry(
                 String name,
@@ -128,7 +133,8 @@ public final class ZipFile {
                 int crc32,
                 short dosTime,
                 short dosDate,
-                boolean isOverlap
+                boolean isOverlap,
+                boolean isCompressed
         ) {
             this.name = name;
             this.data = data;
@@ -137,6 +143,7 @@ public final class ZipFile {
             this.dosTime = dosTime;
             this.dosDate = dosDate;
             this.isOverlap = isOverlap;
+            this.isCompressed = isCompressed;
         }
 
         static Entry normal(String name, byte[] data) {
@@ -153,7 +160,28 @@ public final class ZipFile {
                     (int) crc.getValue(),
                     (short) (dos & 0xFFFF),
                     ((short) (dos >>> 16)),
-                    false);
+                    false,
+                    false
+            );
+        }
+
+        static Entry compressed(String name, byte[] data) {
+
+            CRC32 crc = new CRC32();
+            crc.update(data);
+
+            long dos = ZipFile.toDosTime(LocalDateTime.now());
+
+            return new Entry(
+                    name,
+                    data,
+                    data.length,
+                    (int) crc.getValue(),
+                    (short) (dos & 0xFFFF),
+                    ((short) (dos >>> 16)),
+                    false,
+                    true
+            );
         }
 
         static Entry overlap(String name, int length) {
@@ -165,7 +193,9 @@ public final class ZipFile {
                     0,
                     (short) (dos & 0xFFFF),
                     (short) (dos >>> 16),
-                    true);
+                    true,
+                    false
+            );
         }
 
         LocalFileHeader createLocalHeader() {
@@ -175,8 +205,8 @@ public final class ZipFile {
             return new LocalFileHeader(
                     LocalFileHeader.MAGIC,
                     (short) 20,
-                    (short) 0,
                     effectiveFlags,
+                    (short) 0,
                     dosTime,
                     dosDate,
                     effectiveCrc,
@@ -199,7 +229,7 @@ public final class ZipFile {
                     CentralDirectoryFileHeader.MAGIC,
                     (short) 20,
                     (short) 20,
-                    (short) effectiveFlags,
+                    effectiveFlags,
                     (short) 0,
                     dosTime,
                     dosDate,
